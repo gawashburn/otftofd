@@ -1,17 +1,14 @@
-Overview
---------
-
 otftofd is a script I wrote to help the task of generating a NFSS font
 description file and a map file from a large collection of OpenType
 fonts. In particular, when considering Adobe Pro Optical fonts, there is
 almost a combinatorial nightmare when attempting to create these files
 by hand.
 
-This software is still probably alpha quality and mostly designed
-specifically for Adobe font conventions. It currently has experimental
-support for generating swashed versions of a font and fonts consisting
-of ornaments. There is some preliminary support for selecting encodings,
-but it is far from complete. The tool has been mostly tested with the
+This software is still alpha quality and mostly designed specifically
+for Adobe font conventions. It currently has experimental support
+for generating swashed versions of a font and fonts consisting of
+ornaments. There is some preliminary support for selecting encodings,
+but it is far from complete. The tool has been mostly tested withe the
 T1 Cork encoding. For more information about using the tool, invoke it
 with the --help option.
 
@@ -21,74 +18,7 @@ Kohler's excellent LCDF Typetools.
 ofttofd was originally called "adobe-font-tool", but at the suggestion
 of CTAN it was renamed to hopefully be more descriptive.
 
-otftofd is licensed under the FSF General Public License. Do not hesitate
-to send me bug reports or fixes, other improvements, or suggestions.
-Contact via e-mail at washburn@acm.org.
-
-There is a public, read-only, Subversion repository for otftofd at
-https://svn.cis.upenn.edu/svnroot/otftofd/.
-
-Installation
-------------
-
-otftofd is a script so installation only requires setting the executable
-bit ("chmod a+x otftofd") and placing it in your PATH.
-
-However, otftofd is written in the Objective Caml language with
-the CaSH library.  Therefore you will need to install them before
-otftofd can be used. The latest version of OCaml can be obtained
-from http://caml.inria.fr, and the latest version of CaSH from
-http://pauillac.inria.fr/cash/.
-
-Additionally, otftofd makes use of the programs otfinfo and otftotfm.
-Therefore you will need have them installed as well.  They are part of
-the LCDF Typetools package.  The latest version can be obtained from
-http://www.lcdf.org/type/.
-
-Usage
------
-
-At its simplest, otftofd is just used as 
-
-        otftofd <collection of OpenType fonts>
-
-For example, if I have a directory minion, containing a set of OpenType
-fonts for the Minion Pro font. These files will have names like
-MinionPro*.otf.  Inside the minion directory I would run
-
-        otftofd *.otf
-
-Which will generate a rather large number of support files.  However,
-in general you won't need to concern yourself with them.  At this
-point you just need to make sure that the directory "minion" is in the
-kpathsea search path for TEXINPUTS, TEXFONTS, T1FONTS, and ENCFONTS.
-The simplest way to do this is to set the environment variables, but
-you could also edit your global TeX configuration.
-
-At this point, you just need to add the following to your LaTeX document
-(assuming you are using pdfTeX/LaTeX)
-
-        \pdfmapfile {+MinionPro.map}
-        \renewcommand{\encodingdefault}{T1}
-
-And now the MinionPro font is available.  You could make it the default
-"Roman" font by adding
-
-        \renewcommand{\rmdefault}{MinionPro}
-
-or just in the current scope by 
-
-        \fontencoding{T1}\fontfamily{MinionPro}\selectfont
-
-
-
-By default otftofd uses the "T1" or "Cork" font encoding, but it is
-also possible to tell otftofd to use another encoding.  Returning to
-our Minion Pro example, we could have done
-
-        otftofd --enc=LY1 *.otf
-
-or if we want to use an encoding that otftofd doesn't know about, we
-could have done
-
-        otftodf --enc=LY42 --encFile=myencoding.enc *.otf
+otftofd is licensed under the FSF General Public License. Bug
+fixes, improvements, and suggestions are welcome. There is
+a public, read-only, Subversion repository for otftofd at
+https://svn.cis.upenn.edu/svnroot/otftofd/. 
