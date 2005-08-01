@@ -1,6 +1,6 @@
 <todo version="0.1.19">
     <title>
-        otftofd to-do list $Id: .todo 2 2005-08-01 19:20:20Z geoffw $
+        otftofd to-do list $Id: .todo 4 2005-08-01 21:05:42Z geoffw $
     </title>
     <note priority="veryhigh" time="1122923689">
         Add a README.
@@ -19,6 +19,15 @@
     </note>
     <note priority="medium" time="1122923958">
         Better support for "access all alternatives".
+    </note>
+    <note priority="medium" time="1122929830">
+        Interoperate better with otftotfm to add prefixes to output fonts?
+    </note>
+    <note priority="medium" time="1122930205">
+        Add scaling option.
+    </note>
+    <note priority="medium" time="1122930296">
+        To go with the name better, make generating just the .fd the default behavior.
     </note>
     <note priority="low" time="1122923921">
         Design a language for manipulating the internal otftofd database?
