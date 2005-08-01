@@ -1,9 +1,6 @@
 #!/usr/bin/env cash
-(*
-# vim:ft=ocaml 
-*)
 (* 
-adobe-font-tool $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $
+adobe-font-tool $Id: adobe-font-tool 1025 2005-07-10 19:14:33Z geoffw $
 Copyright Geoffrey Alan Washburn, 2005.
 
 You can redistribute and/or modify this software under the terms of
@@ -27,61 +24,6 @@ open List;;
 
 (******************************************************************************)
 
-(* Define this here just in case, but we'll overwrite it later *)
-let program_name : string ref = ref "otftofd"
-
-(******************************************************************************)
-
-(* Small general helper functions *)
-
-(* Print an error message and exit with an error code *)
-let error (msg : string) : 'a = 
-  begin
-    print_string ((!program_name) ^ " (error) : " ^ msg ^ "\n"); 
-    exit 1
-  end  
-
-(* Print an warning message *)
-let warning (msg : string) : unit = 
-    print_string ((!program_name) ^ " (warning): " ^ msg ^ "\n")
-
-
-(******************************************************************************)
-
-(* Define these in case we need to change them later/dynamically *)
-
-let dirsep = "/"
-let pathsep = ":"
-
-(******************************************************************************)
-
-(* Check whether a programs exists in a given directory *)
-let prog_exists_dir (prog : string) (dir : string) =
-  if (is_file_directory_fn dir) then
-    is_file_executable_fn (dir ^ dirsep ^ prog)
-  else
-    (error ("Tried to check the existence of program " ^ prog ^ " in non-directory " ^ dir))
-
-(* basename *)
-let basename (fn : string) =
-  let parts = Str.split (regexp dirsep) fn in
-  let rec last (l : string list) : string = 
-    (match l with 
-     | []     -> (error "Argument to basename doesn't have a basecase?!")
-     | [base] -> base
-     | h::t   -> last t) in
-   last (parts)  
-  
-(* Check whether a program exists in the users path *)
-let prog_exists_path (prog : string) : bool = 
- exists (prog_exists_dir prog) (exec_path_list ())
-
-(* Run a program and return the output as a string *)
-let system (prog : string) (args : string list) : string = 
-  run_with_string (fun _ -> exec_path prog args)
-
-(******************************************************************************)
-
 (* Define the various datatypes *)
 
 (* Font encodings - not entirely implemented yet FIX *)
@@ -99,8 +41,6 @@ type encoding =
   | TS1  (* ??: ?? *) 
   | U    (* Unknown encoding: ?? *)
   | LY1  (* ??: texnansx *)
-  | LGR  (* Greek: ?? *)
-  | LGI  (* Greek: ?? *)
 
 (* NFSS Weights *)
 type weight = 
@@ -175,6 +115,65 @@ type range =
 
 (******************************************************************************)
 
+(* Define this here just in case, but we'll overwrite it later *)
+let program_name : string ref = ref "adobe-font-tool"
+
+(******************************************************************************)
+
+(* Small general helper functions *)
+
+(* Print an error message and exit with an error code *)
+let error (msg : string) : 'a = 
+  begin
+    print_string ((!program_name) ^ " (error) : " ^ msg ^ "\n"); 
+    exit 1
+  end  
+
+(* Print an warning message *)
+let warning (msg : string) : unit = 
+    print_string ((!program_name) ^ " (warning): " ^ msg ^ "\n")
+
+(* basename *)
+let basename (fn : string) =
+  let parts = Str.split (regexp "/") fn in
+  let rec last (l : string list) : string = 
+    (match l with 
+     | []     -> (error "Argument to basename doesn't have a basecase?!")
+     | [base] -> base
+     | h::t   -> last t) in
+   last (parts)  
+      
+
+(* Check whether a program exists in the users path -- doesn't actually work yet FIX *)
+let prog_exists (prog : string) : bool = true
+
+(* Run a program and return the output as a string *)
+let system (prog : string) (args : string list) : string = 
+  run_with_string (fun _ -> exec_path prog args)
+
+(* Print the usage information for the program *)
+let usage () : 'a = 
+  print_string ("Usage: " ^ (!program_name) ^ "\n" ^
+                "          [--help]\n" ^ 
+                "          [--verbose]\n" ^ 
+                "          [--swash]\n" ^ 
+                "          [--ornaments]\n" ^ 
+                "          [--enc=ENCODING]\n" ^ 
+                "          [--encFile=FILE]\n" ^ 
+                "          files ...\n\n" ^ 
+                "Construct NFSS font descriptor files and PostScript map files\n" ^ 
+                "for the specified OpenType fonts.\n\n" ^ 
+                "    -h, --help        print this message\n" ^ 
+                "     --verbose        print more information about what is happening\n" ^ 
+                "     --swash          generate a swashy version (experimental)\n" ^ 
+                "     --ornaments      generate ornaments (experimental)\n" ^ 
+                "     --enc=ENCODING   set the encoding type (default T1) \n" ^ 
+                "     --encFile=FILE   set the encoding definition (default cork)\n\n" ^ 
+                "Version $Id: adobe-font-tool 1025 2005-07-10 19:14:33Z geoffw $\n" ^ 
+                "Report bugs to <washburn@acm.org>.\n")
+
+(******************************************************************************)
+
 (* Convert an encoding to a string *) 
 let encodingToString (enc : encoding) =
   (match enc with   
@@ -190,8 +189,6 @@ let encodingToString (enc : encoding) =
     | T5   -> "T5" 
     | TS1  -> "TS1" 
     | LY1  -> "LY1"
-    | LGR  -> "LGR"
-    | LGI  -> "LGI"
     | U    -> "U")
 
 let parseEncoding (enc : string) : encoding =
@@ -208,15 +205,13 @@ let parseEncoding (enc : string) : encoding =
    | "T5"  -> T5
    | "TS1" -> TS1
    | "LY1" -> LY1
-   | "LGR" -> LGR
-   | "LGI" -> LGI
    | "U"   -> U
    | _     -> error ("Unknown font encoding " ^ enc))
 
 (* Convert an encoding name to a default encoding file, not entirely correct yet. *) 
 let encodingToFile (enc : encoding) =
   let encwarn () = 
-    warning ("Presently, encoding " ^ (encodingToString enc) ^ " is not directly supported.\nTry using --encFile=file to specify an encoding file.  ") 
+    warning ("Presently, encoding " ^ (encodingToString enc) ^ " is not directly supported") 
   in  
   (match enc with   
     | OML  -> (encwarn (); "-")
@@ -871,51 +866,6 @@ let genFdFile (enc : encoding) : (string * string) list =
     families
     []
 
-
-(******************************************************************************)
-
-type map_special = 
-  | SlantFontSpecial of float 
-  | ExtendFontSpecial of float
-
-type std_psfont =
-  | TimesRomanPS
-  | TimesItalicPS
-  | TimesBoldPS
-  | TimesBoldItalicPS
-  | HelveticaPS
-  | HelveticaObliquePS
-  | HelveticaBoldPS
-  | HelveticaBoldObliquePS
-  | CourierPS
-  | CourierObliquePS
-  | CourierBoldPS
-  | CourierBoldObliquePS
-  | SymbolPS
-
-type map_embed =
-  | PartialEmbed
-  | FullEmbed
-  | NoEmbed
-
-(* tfmname, psbasename, fontflags, specials, encoding file *)
-type map_entry = 
-  | MapFile of string * 
-               string option * 
-        (*       map_fontflags option * FIX *)
-               map_special list *
-               string option *
-               map_embed *
-               string 
-  | PSFile  of string *
-               std_psfont *
-       (*        map_fontflags option * FIX *)
-               map_special list *
-               string option
-                 
-
-(******************************************************************************)
-
 (* Generate a list of map files by running otftotfm*)
 let genMapFile () : (string * string) list = 
   Hashtbl.fold
@@ -956,27 +906,6 @@ let genMapFile () : (string * string) list =
 
 (******************************************************************************)
 
-(* Print the usage information for the program *)
-let usage () : 'a = 
-  print_string ("Usage: " ^ (!program_name) ^ "\n" ^
-                "          [--help]\n" ^ 
-                "          [--verbose]\n" ^ 
-                "          [--swash]\n" ^ 
-                "          [--ornaments]\n" ^ 
-                "          [--enc=ENCODING]\n" ^ 
-                "          [--encFile=FILE]\n" ^ 
-                "          files ...\n\n" ^ 
-                "Construct NFSS font descriptor files and PostScript map files\n" ^ 
-                "for the specified OpenType fonts.\n\n" ^ 
-                "    -h, --help        print this message\n" ^ 
-                "     --verbose        print more information about what is happening\n" ^ 
-                "     --swash          generate a swashy version (experimental)\n" ^ 
-                "     --ornaments      generate ornaments (experimental)\n" ^ 
-                "     --enc=ENCODING   set the encoding type (default T1) \n" ^ 
-                "     --encFile=FILE   set the encoding definition (default cork)\n\n" ^ 
-                "Version $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $\n" ^ 
-                "Report bugs to <washburn@acm.org>.\n")
-
 let rec parseArgs (args : string list) : string list =
   (match args with
    | []               -> []
@@ -1004,9 +933,11 @@ let _ = (program_name := basename (hd (command_line ())))
 
 let options = (tl (command_line ()))
 
-let _ = map (fun prog -> if not (prog_exists_path prog) then
-             error ("Could not find the program " ^ prog ^ " in your path!"))
-        ["otfinfo"; "otftotfm"]     
+let _ = if not (prog_exists "otfinfo") then
+          error ("Could not find the program otfinfo in your path!")
+
+let _ = if not (prog_exists "otftotfm") then
+          error ("Could not find the program otfinfo in your path!")
 
 (******************************************************************************)
 
