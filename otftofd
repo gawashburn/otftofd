@@ -1,0 +1,1043 @@
+#!/usr/bin/env cash
+(*
+# vim:ft=ocaml 
+*)
+(* 
+adobe-font-tool $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $
+Copyright Geoffrey Alan Washburn, 2005.
+
+You can redistribute and/or modify this software under the terms of
+the GNU General Public License as published by the Free Software
+Foundation; either version 2, or (at your option) any later version.
+
+This software is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+
+You may obtain the GNU General Public License by writing to the Free
+Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+02111-1307, USA.
+*)
+
+#load "str.cma";;
+open Cash;;
+open Str;;
+open List;;
+
+(******************************************************************************)
+
+(* Define this here just in case, but we'll overwrite it later *)
+let program_name : string ref = ref "otftofd"
+
+(******************************************************************************)
+
+(* Small general helper functions *)
+
+(* Print an error message and exit with an error code *)
+let error (msg : string) : 'a = 
+  begin
+    print_string ((!program_name) ^ " (error) : " ^ msg ^ "\n"); 
+    exit 1
+  end  
+
+(* Print an warning message *)
+let warning (msg : string) : unit = 
+    print_string ((!program_name) ^ " (warning): " ^ msg ^ "\n")
+
+
+(******************************************************************************)
+
+(* Define these in case we need to change them later/dynamically *)
+
+let dirsep = "/"
+let pathsep = ":"
+
+(******************************************************************************)
+
+(* Check whether a programs exists in a given directory *)
+let prog_exists_dir (prog : string) (dir : string) =
+  if (is_file_directory_fn dir) then
+    is_file_executable_fn (dir ^ dirsep ^ prog)
+  else
+    (error ("Tried to check the existence of program " ^ prog ^ " in non-directory " ^ dir))
+
+(* basename *)
+let basename (fn : string) =
+  let parts = Str.split (regexp dirsep) fn in
+  let rec last (l : string list) : string = 
+    (match l with 
+     | []     -> (error "Argument to basename doesn't have a basecase?!")
+     | [base] -> base
+     | h::t   -> last t) in
+   last (parts)  
+  
+(* Check whether a program exists in the users path *)
+let prog_exists_path (prog : string) : bool = 
+ exists (prog_exists_dir prog) (exec_path_list ())
+
+(* Run a program and return the output as a string *)
+let system (prog : string) (args : string list) : string = 
+  run_with_string (fun _ -> exec_path prog args)
+
+(******************************************************************************)
+
+(* Define the various datatypes *)
+
+(* Font encodings - not entirely implemented yet FIX *)
+type encoding =
+  | OML  (* Original TeX math text encoding: ?? *)
+  | OMS  (* Original TeX math symbol encoding: ?? *) 
+  | OMX  (* Original TeX math extended symbol encoding: ?? *)
+  | OT1  (* Original TeX encoding: ?? *)
+  | OT2  (* ??: ?? *)
+  | OT4  (* ??: ?? *)
+  | QX   (* ??: ?? *)
+  | T1   (* TeX Cork encoding: cork, tex256 *) 
+  | T2   (* ??: ?? *) 
+  | T5   (* ??: ?? *) 
+  | TS1  (* ??: ?? *) 
+  | U    (* Unknown encoding: ?? *)
+  | LY1  (* ??: texnansx *)
+  | LGR  (* Greek: ?? *)
+  | LGI  (* Greek: ?? *)
+
+(* NFSS Weights *)
+type weight = 
+  | UltraLightWeight 
+  | ExtraLightWeight 
+  | LightWeight
+  | SemiLightWeight
+  | MediumWeight
+  | SemiBoldWeight
+  | BoldWeight
+  | ExtraBoldWeight
+  | UltraBoldWeight
+
+(* NFSS Widths *)
+type width =
+  | UltraCondensedWidth
+  | ExtraCondensedWidth
+  | CondensedWidth
+  | SemiCondensedWidth
+  | MediumWidth
+  | SemiExpandedWidth
+  | ExpandedWidth
+  | ExtraExpandedWidth
+  | UltraExpandedWidth
+
+(* NFSS Shapes *)
+type shape = 
+  | UprightShape
+  | ItalicShape
+  | SlantedShape
+  | SmallCapsShape
+  | UprightItalicShape
+  | OutlineShape
+
+(* OpenType features *)
+type feature = 
+  | Faalt (* access all alternates *)
+  | Fc2sc (* small captials from capitals *)
+  | Fcalt (* contextual alternatives *)
+  | Fcase (* case sensitive forms *)
+  | Fcpsp (* captial spacing *)
+  | Fcswh (* contextual swash *)
+  | Fdlig (* discrentionary ligatures *)
+  | Fdnom (* denominators *)
+  | Ffina (* terminal forms *)
+  | Ffrac (* fractions *)
+  | Fhist (* historical forms *)
+  | Fkern (* kerning *)
+  | Fliga (* standard ligatures *)
+  | Flnum (* lining figures *)
+  | Fnumr (* numerators *)
+  | Fonum (* old style numbers *)
+  | Fordn (* ordinals *)
+  | Fornm (* Ornaments *)
+  | Fpnum (* proportional figures *)
+  | Fsalt (* stylistic alternatives *)
+  | Fsinf (* scientific inferiors *)
+  | Fsize (* optical sizes *)
+  | Fsmcp (* small caps *)
+  | Fss of int (* Stylistic sets *)
+  | Fsups (* superscript *)
+  | Fswsh (* swash *)
+  | Ftnum (* tabular figures *)
+  | Fzero (* slashed zero *)
+
+(* Ranges used to describe optical coverage for a font *)    
+type range =
+  | Greater of float
+  | Less of float
+  | Between of (float * float)
+  | All 
+
+(******************************************************************************)
+
+(* Convert an encoding to a string *) 
+let encodingToString (enc : encoding) =
+  (match enc with   
+    | OML  -> "OML"
+    | OMS  -> "OMS"
+    | OMX  -> "OMX"
+    | OT1  -> "OT1"
+    | OT2  -> "OT2"
+    | OT4  -> "OT4"
+    | QX   -> "QX"
+    | T1   -> "T1" 
+    | T2   -> "T2" 
+    | T5   -> "T5" 
+    | TS1  -> "TS1" 
+    | LY1  -> "LY1"
+    | LGR  -> "LGR"
+    | LGI  -> "LGI"
+    | U    -> "U")
+
+let parseEncoding (enc : string) : encoding =
+  (match (String.uppercase enc) with 
+   | "OML" -> OML
+   | "OMS" -> OMS
+   | "OMX" -> OMX
+   | "OT1" -> OT1
+   | "OT2" -> OT2
+   | "OT4" -> OT4
+   | "QX"  -> QX
+   | "T1"  -> T1
+   | "T2"  -> T2
+   | "T5"  -> T5
+   | "TS1" -> TS1
+   | "LY1" -> LY1
+   | "LGR" -> LGR
+   | "LGI" -> LGI
+   | "U"   -> U
+   | _     -> error ("Unknown font encoding " ^ enc))
+
+(* Convert an encoding name to a default encoding file, not entirely correct yet. *) 
+let encodingToFile (enc : encoding) =
+  let encwarn () = 
+    warning ("Presently, encoding " ^ (encodingToString enc) ^ " is not directly supported.\nTry using --encFile=file to specify an encoding file.  ") 
+  in  
+  (match enc with   
+    | OML  -> (encwarn (); "-")
+    | OMS  -> (encwarn (); "-")
+    | OMX  -> (encwarn (); "-")
+    | OT1  -> (encwarn (); "-")
+    | OT2  -> (encwarn (); "-")
+    | OT4  -> (encwarn (); "-")
+    | QX   -> (encwarn (); "-")
+    | T1   -> "cork" 
+    | T2   -> (encwarn (); "-")
+    | T5   -> (encwarn (); "-")
+    | TS1  -> (encwarn (); "-")
+    | LY1  -> "texnansx"
+    | U    -> (encwarn (); "-"))
+
+(* Convert a feature to a string *)
+let featureToString (feat : feature) =
+  (match feat with 
+   | Faalt -> "aalt"
+   | Fc2sc -> "c2sc"
+   | Fcalt -> "calt"
+   | Fcase -> "case"
+   | Fcpsp -> "cpsp"
+   | Fcswh -> "cswh"
+   | Fdlig -> "dlig"
+   | Fdnom -> "dnom"
+   | Ffina -> "fina"
+   | Ffrac -> "frac"
+   | Fhist -> "hist"
+   | Fkern -> "kern"
+   | Fliga -> "liga"
+   | Flnum -> "lnum"
+   | Fnumr -> "numr"
+   | Fonum -> "onum"
+   | Fordn -> "ordn"
+   | Fornm -> "ornm"
+   | Fpnum -> "pnum"
+   | Fsalt -> "salt"
+   | Fsinf -> "sinf"
+   | Fsize -> "size"
+   | Fsmcp -> "smcp"
+   | Fss(n) -> if((n >= 1) || (n<=20)) then "ss" ^ (string_of_int n) else (error "Invalid style set") (* FIX -- this doesn't output leading zeros :-(  *)
+   | Fsups -> "sups"
+   | Fswsh -> "swsh"
+   | Ftnum -> "tnum"
+   | Fzero -> "zero")
+
+(* Convert a weight to a string *)
+let weightToString (wght : weight) =
+  (match wght with
+   | UltraLightWeight -> "ul"
+   | ExtraLightWeight -> "el"
+   | LightWeight      -> "l"
+   | SemiLightWeight  -> "sl"
+   | MediumWeight     -> "m"
+   | SemiBoldWeight   -> "sb"
+   | BoldWeight       -> "b"
+   | ExtraBoldWeight  -> "eb"
+   | UltraBoldWeight  -> "ub")
+   
+(* Convert a width to a string *)   
+let widthToString (wdth : width) =
+  (match wdth with
+   | UltraCondensedWidth -> "uc"
+   | ExtraCondensedWidth -> "ec"
+   | CondensedWidth      -> "c"
+   | SemiCondensedWidth  -> "sc"
+   | MediumWidth         -> "m"
+   | SemiExpandedWidth   -> "sx"
+   | ExpandedWidth       -> "x"
+   | ExtraExpandedWidth  -> "ex"
+   | UltraExpandedWidth  -> "ux")
+
+(* Convert a shape to a string *)
+let shapeToString (shp : shape) =
+  (match shp with
+   | UprightShape       -> "n"
+   | ItalicShape        -> "it"
+   | SlantedShape       -> "sl"
+   | SmallCapsShape     -> "sc"
+   | UprightItalicShape -> (error "FIX")
+   | OutlineShape       -> (error "FIX"))
+
+(* Convert a range to a string *)
+let rangeToString (rng : range) : string =
+  (match rng with
+    | Greater f -> "<" ^ (string_of_float f) ^ "->"
+    | Less f -> "<-" ^ (string_of_float f) ^ ">"
+    | Between (s,e) -> "<" ^ (string_of_float s) ^ "-" ^ (string_of_float e) ^ ">"
+    | All -> "<->" )
+
+(* Compare to ranges -- kind of broken, but works well enough at the moment *)
+let compareRngs (rng1 : range) (rng2 : range) : int =
+  (match (rng1, rng2) with
+    (* Slapdash comparison heurisitic *)
+    | (All, All) -> 0  
+    | (_, All)   -> -1
+    | (All, _)   -> 1
+    | (Greater f1, Greater f2) -> compare f1 f2
+    | (Less f1, Less f2) -> compare f1 f2
+    | (Greater f1, Less f2) -> compare f1 f2 
+    | (Less f1, Greater f2) -> compare f1 f2 
+    | (Less f, Between (s,e)) -> 
+      if (f < e) then -1
+      else
+        if (f >= e) then 1
+        else 
+          0
+    | (Between (s,e), Less f) -> 
+      if (f < e) then -1
+      else
+        if (f >= e) then 1
+        else 
+          0
+    | (Greater f, Between (s,e)) -> 
+      if (f < e) then -1
+      else
+        if (f >= e) then 1
+        else 
+          0
+    | (Between (s,e), Greater f) -> 
+      if (f < e) then -1
+      else
+        if (f >= e) then 1
+        else 
+          0
+    | (Between (s1, e1), Between (s2, e2)) ->
+      if (e1 < s1) then -1
+      else
+        if (s1 >= e2) then 1
+        else 
+          if (e1 < e2) then -1
+          else 
+            if (e1 >= e2) then 1
+            else 
+              0
+    )
+  
+(* Create a series string from width and weight *)
+let createSeries (wght : weight) (wdth : width) =
+  (match wght with
+   | MediumWeight ->
+     (match wdth with 
+      | MediumWidth -> "m" 
+      | _ -> widthToString wdth)  
+   | _ -> 
+     (match wdth with 
+      | MediumWidth -> weightToString wght
+      | _ -> (weightToString wght) ^ (widthToString wdth)))
+
+(******************************************************************************)
+
+(* Global configuration constants *)
+
+let encoding : encoding ref = ref T1 
+let encodingFile : (string option) ref = ref None 
+
+(* Should we show the usage information instead of doing anything? *) 
+let showUsage : bool ref = ref false 
+
+(* Generate a version of the fonts with swashes *)
+let swashVersion : bool ref = ref false 
+
+(* Generate a version of the fonts with just ornaments *)
+let ornamentVersion : bool ref = ref false 
+
+(* Should we print more info about what we are doing? *)
+let verbose : bool ref = ref false 
+
+(******************************************************************************)
+
+(* Heuristics *)
+
+(* Try to infer a weight from the attribute string in the filename *)
+let parseWeight (attr : string) = 
+    if (string_match (regexp ".*\\(Black\\|Bold\\|Bd\\|Semibold\\|Regular\\|ExtraLight\\|Light\\|Lt\\).*") attr 0) then
+      (match (matched_group 1 attr) with 
+      (* We assume black is ExtraBold rather than UltraBold *)
+       | "Black"        -> Some (ExtraBoldWeight)
+       | ("Bold"|"Bd")  -> Some (BoldWeight)  
+       | "Semibold"     -> Some (SemiBoldWeight)
+       | "Regular"      -> Some (MediumWeight)
+       (* Disambiguate *)
+       | ("Light"|"Lt") ->
+          if (string_match (regexp ".*ExtraLight.*") attr 0) then
+            Some (ExtraLightWeight)
+          else    
+            Some (LightWeight)
+       | _              -> (error "Shouldn't have matched!"))
+     else 
+       None
+
+(* Try to infer a width from the attribute string in the filename *)
+let parseWidth (attr : string) = 
+    if (string_match (regexp ".*\\(Regular\\|Cond\\|SemiCn\\|Cn\\|SemiExt\\).*") attr 0) then
+      (match (matched_group 1 attr) with 
+       | "SemiExt"      -> Some (SemiExpandedWidth)
+       | "Regular"      -> Some (MediumWidth)
+       | ("Cond"|"Cn")  -> 
+         (* Disambiguate *)
+         if (string_match (regexp ".*SemiCn.*") attr 0) then
+           Some (SemiCondensedWidth)
+         else   
+           Some (CondensedWidth)
+       | _              -> (error "Shouldn't have matched!"))
+     else 
+       None
+
+(* Try to infer a shape from the attribute string in the filename *)
+let parseShape (attr : string) = 
+    if (string_match (regexp ".*\\(Regular\\|It\\|Italic\\|Slanted\\).*") attr 0) then
+      (match (matched_group 1 attr) with 
+       | ("Italic"|"It")  -> Some (ItalicShape)
+       | "Regular"        -> Some (UprightShape)
+       | "Slanted"        -> Some (SlantedShape)
+       | _                -> (error "Shouldn't have matched!"))
+     else 
+       None
+
+(* Try to infer a design size from the attribute string in the filename *)
+let parseDesign (attr : string) = 
+    if (string_match (regexp ".*\\(Regular\\|Capt\\|Disp\\|Headline\\|Subh\\).*") attr 0) then
+      (match (matched_group 1 attr) with 
+      (* otfinfo gives slightly different numbers for different fonts, so just
+         use these as an estimate if otfinfo is unavailable or doesn't provide
+         feedback *)
+       | ("Disp"|"Headline")  -> Some (20.1,72.0)
+       | "Subh"               -> Some (13.1, 20.0)
+       | "Regular"            -> Some (9.0, 13.0)
+       | "Capt"               -> Some (6.0, 8.9)
+       | _                    -> (error "Shouldn't have matched!"))
+     else 
+       None
+
+(* Attempt to figure out stuff about the font just from the name *)
+let parseFileName (fn : string) = 
+    let parts = Str.split (regexp "[-\\.]") fn in
+      (match parts with
+       | [name; attr; ext] -> if (ext = "otf") then
+                                (name, 
+                                 parseWeight attr, 
+                                 parseWidth attr, 
+                                 parseShape attr,
+                                 parseDesign attr)
+                              else
+                                 error ("Filename \"" ^ fn ^ "\" does not appear to be an OpenType file")
+       | [name; ext]       -> if (ext = "otf") then
+                                (name, 
+                                 None, 
+                                 None, 
+                                 None, 
+                                 None)
+                              else
+                                 error ("Filename \"" ^ fn ^ "\" does not appear to be an OpenType file")
+       | _ -> error ("Error parsing filename \"" ^ fn ^ "\""))
+
+(******************************************************************************)
+
+(* Constants used when optimizing ranges *)
+let minrange = 1.0
+let maxrange = 144.0
+
+(* Optimize font ranges *)
+let optRanges (rngs : (range * (string * string list)) list) :
+              (range * (string * string list)) list =
+    (* First sort them *)          
+    let sorted = sort (fun (rng1, _) (rng2, _) ->  compareRngs rng1 rng2)  
+                 rngs in
+    (* Extend the ranges so that we have everything as small as minrange pt *)             
+    let cover_bottom rngs = 
+      (match rngs with
+       | [] -> (error "Font must have at least one range!")
+       | (Greater f, stf)::tl     -> (Greater minrange, stf)::tl
+       | (Less f, stf)::tl        -> (Less f, stf)::tl
+       | (Between (s,e), stf)::tl -> (Between (minrange, e), stf)::tl
+       | (All, stf)::tl           -> (All, stf)::tl)
+    in
+    (* Extend the ranges so that we have everything as large as maxrange pt *)
+    let rec cover_top rngs =
+      (match rngs with 
+       | [] -> (error "Font must have at least one range!")
+       | [(Greater f, stf)] -> [(Greater f, stf)]
+       | [(Less f, stf)] -> [(Less maxrange, stf)]
+       | [(Between (s,e), stf)] -> [(Between (s, maxrange), stf)]
+       | [(All, stf)] -> [(All, stf)]
+       | hd::tl -> hd::(cover_top tl))
+    in
+    let rec remove_gaps rngs =
+      (match rngs with 
+       | [] -> (error "Font must have at least one range!")
+       | [(rng, stf)] -> [(rng, stf)]
+       | (rng1, stf1)::(rng2, stf2)::tl ->
+         (match (rng1, rng2) with
+          (* All can't have a gap *)
+          | (All, _) -> (rng1, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          (* Greater can't have a gap *)
+          | (Greater _, _) -> (rng1, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          (* Less followed by less or all can't have a gap *)
+          | (Less _, Less _) -> (rng1, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          | (Less _, All) -> (rng1, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          | (Less f1, Greater f2) -> (Less f2, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          | (Less f, Between (s,e)) -> (Less s, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          (* Between followed by less or all can't have a gap *)
+          | (Between (s, e), Less f) -> (rng1, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          | (Between (s, e), All) -> (rng1, stf1)::(remove_gaps ((rng2,stf2)::tl))
+          | (Between (s, e), Greater f) -> (Between(s, f), stf1)::(remove_gaps ((rng2,stf2)::tl))
+          | (Between (s1,e1), Between (s2,e2)) -> 
+              (Between (s1,s2), stf1)::(remove_gaps ((rng2,stf2)::tl))
+         ))
+    in
+      remove_gaps (cover_bottom (cover_top sorted))
+
+(******************************************************************************)
+
+(* Feature parsing *)
+
+(* This is a list of regexps and handler functions *)
+let featureHandlers = 
+  [ ("aalt", (fun _ -> Faalt));
+    ("c2sc", (fun _ -> Fc2sc));        
+    ("calt", (fun _ -> Fcalt));        
+    ("case", (fun _ -> Fcase));        
+    ("cpsp", (fun _ -> Fcpsp));        
+    ("cswh", (fun _ -> Fcswh));        
+    ("dlig", (fun _ -> Fdlig));        
+    ("dnom", (fun _ -> Fdnom));        
+    ("fina", (fun _ -> Ffina));        
+    ("frac", (fun _ -> Ffrac));        
+    ("hist", (fun _ -> Fhist));        
+    ("kern", (fun _ -> Fkern));        
+    ("liga", (fun _ -> Fliga));        
+    ("lnum", (fun _ -> Flnum));        
+    ("numr", (fun _ -> Fnumr));        
+    ("onum", (fun _ -> Fonum));        
+    ("ordn", (fun _ -> Fordn));        
+    ("ornm", (fun _ -> Fornm));        
+    ("pnum", (fun _ -> Fpnum));        
+    ("salt", (fun _ -> Fsalt));        
+    ("sinf", (fun _ -> Fsinf));        
+    ("size", (fun _ -> Fsize));        
+    ("smcp", (fun _ -> Fsmcp));        
+    ("smcp", (fun _ -> Fsmcp));        
+    ("ss[0-9][0-9]", 
+      (fun str -> 
+        let numstr = (last_chars str 2) in
+          try
+            let n = int_of_string numstr in
+              if((n >= 1) || (n<=20)) then 
+                Fss(n) 
+              else 
+                (error "Invalid style set while parsing features")
+          with Failure msg -> (error "Invalid style set while parsing features")));
+    ("sups", (fun _ -> Fsups));        
+    ("swsh", (fun _ -> Fswsh));        
+    ("tnum", (fun _ -> Ftnum));        
+    ("zero", (fun _ -> Fzero)) ]        
+
+(* Call otfinfo to obtain a list of features for the specified filename *)
+let parseOTFFeatures (fn : string) : feature list =
+  let result = system "otfinfo" ["-f"; fn] in
+  let rec buildFeatures handlers features =
+    (match handlers with
+      | [] -> (rev features)
+      | (rx, handlerFun)::hs -> 
+        if (string_match 
+             (regexp ("\\(.\\|\n\\)*\\(" ^ rx ^ "\\)\\(.\\|\n\\)*")) result 0) then
+          buildFeatures hs ((handlerFun (matched_group 2 result))::features)
+        else
+          buildFeatures hs features)
+  in
+    buildFeatures featureHandlers []
+
+(******************************************************************************)
+
+(* Parsing design size *)
+
+(* See if otfinfo can give us a design size as well as a size range *)
+let parseOTFSize (fn : string) : (float * float * float) option =
+  let result = system "otfinfo" ["-z"; fn] in
+  (* Abstract out the regex for a decimal number *)
+  let dec_num = "[0-9]+\\(\\.[0-9]+\\)?" in
+  if (string_match (regexp 
+    ("design size \\(" ^ dec_num ^ 
+     "\\) pt, size range \\((\\|\\[\\)\\(" ^ dec_num ^ "\\) pt, \\(" ^ dec_num ^
+     "\\) pt\\()\\|\\]\\), .*")) result 0) 
+  then
+     Some (float_of_string (matched_group 1 result),
+           float_of_string (matched_group 4 result),
+           float_of_string (matched_group 6 result))
+  else   
+     None
+
+(******************************************************************************)
+
+(* The primary datastructure that we use to construct all of the necessary output 
+   familes          -- table of all the font families we have encountered
+     shapes         -- each family has a table of shapes that it supports
+       weights      -- each shape table has a table of weights it supports
+         widths     -- each weight table has a table of widths it supports
+          ranges    -- each width table has a list of optical ranges,
+                       should not overlap.  
+            impl    -- each range has an associated implementation with 
+                       it, that is a pair of the file that we are using to 
+                       get this particular instance and the options that 
+                       we need to pass to otftotfm to generate it                    
+       
+*)
+(* Create one of size five, don't expect to run this on more than a couple families *)
+let families = Hashtbl.create 5  
+
+
+let allocate_family (fam : string) : unit = 
+  (* Check to see if this family already exists *)
+  if (not (Hashtbl.mem families fam)) then
+    (* Create seven entries for shapes, as we don't recognize any more than six 
+       at this point *)
+    Hashtbl.add families fam (Hashtbl.create 7)
+  else 
+    ()
+
+(* Allocate an entry in the font table *)
+let allocate_entry (fam : string) 
+                   (shp : shape) 
+                   (wght : weight)
+                   (wdth : width)
+                   (rng : range)
+                   (fn : string)
+                   (opts : string list) =
+  let shpTable = 
+    (* Check to see if this family already exists *)
+    try 
+      Hashtbl.find families fam 
+    (* If not, create it *)  
+    with Not_found ->  
+    (* Create seven entries for shapes, as we don't recognize any more than six 
+       at this point *)
+      let tbl = Hashtbl.create 7 in
+        (Hashtbl.add families fam tbl; tbl) in
+  let wghtTable =        
+    (* Check to see if this table already exists *)
+    try 
+      Hashtbl.find shpTable shp 
+    (* If not, create it *)  
+    with Not_found ->  
+    (* Create ten entries for weights, as we don't recognize any more than nine 
+       at this point *)
+      let tbl = Hashtbl.create 10 in
+        (Hashtbl.add shpTable shp tbl; tbl) in
+  let wdthTable =        
+    (* Check to see if this table already exists *)
+    try 
+      Hashtbl.find wghtTable wght
+    (* If not, create it *)  
+    with Not_found ->  
+    (* Create ten entries for widthd, as we don't recognize any more than nine 
+       at this point *)
+      let tbl = Hashtbl.create 10 in
+        (Hashtbl.add wghtTable wght tbl; tbl) in
+   let rngList = 
+    (* Check to see if there is already a list of ranges *)
+    try 
+      Hashtbl.replace wdthTable wdth ((rng,(fn, opts))::(Hashtbl.find wdthTable wdth))
+    (* If not, create it *)  
+    with Not_found ->  
+      Hashtbl.add wdthTable wdth [(rng, (fn, opts))] in
+    ()  
+
+(***************************************************************************)
+
+(* Check for a specified feature *)
+let rec checkFeature (feat : feature) (feats : feature list) : bool = 
+  (match feats with
+   | [] -> false
+   | hd::tl -> 
+     if (hd = feat) then
+       true
+     else 
+       checkFeature feat tl)
+
+(* Given the fonts features and the shape we inferred from the filename, 
+   figure out what shapes it supports and the options necessary to generate them *)
+let decideShapes (shpopt : shape option) (feats : feature list) : 
+  (shape * string list) list =
+  (* Look at what we decided from the filename *)
+  (match shpopt with
+    (* If it is upright we might also want to check for smallcaps *)
+    | Some(UprightShape) ->
+      if (checkFeature Fsmcp feats) then
+        [(UprightShape, []); (SmallCapsShape, ["-fsmcp"])]
+      else
+        [(UprightShape, [])]
+    (* OpenType allows "other" shapes to also have smallcaps shapes, 
+       but NFSS doesn't support mixing shapes like that at the moment, 
+       so we will just ignore the smallcaps capabilities *)    
+    | Some(shp) -> [(shp, [])]
+    (* If we didn't get a shape from the filename, assume upright, and
+       check for smallcaps *)
+    | None -> 
+      if (checkFeature Fsmcp feats) then
+        [(UprightShape, []); (SmallCapsShape, ["-fsmcp"])]
+      else
+        [(UprightShape, [])])
+    
+(* Decide the weight of a font, not very interesting because 
+   we only rely upon what we guessed from the filename *)
+(* FIX: Should also attempt to consult otfinfo *)   
+let decideWeight (wghtopt : weight option) : weight =
+  (match wghtopt with
+   (* If we inferred a weight, use it *)
+   | Some(wght) -> wght
+   (* If we didn't assume that this is a medium weight font *)
+   | None -> MediumWeight)
+
+(* Decide the width of a font, not very interesting because 
+   we only rely upon what we guessed from the filename *)
+(* FIX: Should also attempt to consult otfinfo *)   
+let decideWidth (wdthopt : width option) : width =
+  (match wdthopt with
+   (* If we inferred a weight, use it *)
+   | Some(wdth) -> wdth
+   (* If we didn't assume that this is a medium weight font *)
+   | None -> MediumWidth)
+
+(* See if we can determine an optical size *)
+let decideSize (dsnopt : (float * float) option) 
+               (feats : feature list) 
+               (otfsize : (float * float * float) option) : range = 
+  (* Does this font include an optical size feature? *)
+  if (checkFeature Fsize feats) then
+    (* Yes, use it *)
+    (match otfsize with 
+     | Some(_, s, e) -> Between (s, e)
+     | None -> (error "Shouldn't be possible!")
+    )
+  else
+    All 
+    (* Turn this off for now, doesn't seem to really work well 
+    
+    (* Nope, try guessing based upon the name *)
+    (match dsnopt with
+     | Some (s, e) -> Between (s, e)
+     | None -> All)
+     *)
+
+(* Table building inner loop *)
+let build_table_inner (fn : string)
+                      (family : string) 
+                      (wghtopt : weight option)
+                      (wdthopt : width option)
+                      (dsnopt : (float * float) option) 
+                      (shp : shape)  
+                      (features : feature list)
+                      (opts : string list) =                       
+  let otfsize = parseOTFSize fn in
+  (* Always add default ligatures, kerning, and terminal forms if they are available *)
+  let opts = if (checkFeature Fliga features) then "-fliga"::opts else opts in
+  let opts = if (checkFeature Fkern features) then "-fkern"::opts else opts in
+  let opts = if (checkFeature Ffina features) then "-ffina"::"--boundary-char= "::opts else opts in
+    begin
+      (* Allocate entries in the table *)
+      allocate_entry family 
+                     shp 
+                     (decideWeight wghtopt) 
+                     (decideWidth wdthopt) 
+                     (decideSize dsnopt features otfsize)
+                     fn
+                     opts
+     end                
+
+(* Fill in the appropriate entries in the family table for the given filename *)
+let build_table (swash : bool) (orn : bool) (fn : string) = 
+  let (family, wghtopt, wdthopt, shpopt, dsnopt) = parseFileName fn in
+  let features = parseOTFFeatures fn in
+    begin 
+      (* For each shape we have ... *)
+      fold_left 
+       (fun _ (shp, opts) ->
+         if swash then
+           if ((checkFeature Fswsh features) && (checkFeature Fcswh features)) then
+             let opts = "-fswsh"::"-fcswh"::opts in
+               build_table_inner fn family wghtopt wdthopt dsnopt shp features opts
+            else
+             (* No swashes, so don't do anything *)
+             ()
+         else if orn then
+           if (checkFeature Fornm features) then
+             let opts = "-fornm"::opts in
+               build_table_inner fn family wghtopt wdthopt dsnopt shp features opts
+            else
+             (* No ornaments, so don't do anything *)
+             ()
+         else 
+           build_table_inner fn family wghtopt wdthopt dsnopt shp features opts)
+       () 
+       (decideShapes shpopt features)
+    end    
+
+(* Generate the "Texname" for a given font from the filename and options *)
+let genTexname (fn : string) (enc : encoding) (opts : string list) = 
+    let rec filteropts (opts : string list) : string list =
+      (match opts with
+       | []   -> []
+       | h::t -> 
+         if (string_match (regexp "-f.*") h 0) then h::(filteropts t) else (filteropts t))
+      in
+    let fopts = filteropts opts in 
+    let parts = Str.split (regexp "\\.") fn in
+      (match parts with
+       | [name; ext] -> if (ext = "otf") then
+                          (encodingToString enc) ^ "-" ^ name ^ (String.concat "" fopts) 
+                        else
+                          error ("Filename \"" ^ fn ^ "\" does not appear to be an OpenType file")
+       | _ -> error ("Error parsing filename \"" ^ fn ^ "\""))
+
+(******************************************************************************)    
+
+(* Generate a list of NFSS font descriptor files *)
+let genFdFile (enc : encoding) : (string * string) list = 
+  Hashtbl.fold
+    (fun family shpTable files -> 
+      (((encodingToString enc) ^ family ^ ".fd"), 
+      "\\DeclareFontFamily{" ^ (encodingToString enc) ^ "}{" ^ family ^ "}{}\n" ^ 
+      (Hashtbl.fold
+        (fun shp wghtTable accum ->
+          Hashtbl.fold 
+            (fun wght wdthTable accum ->
+              Hashtbl.fold 
+                (fun wdth rngs accum ->
+                  ("\\DeclareFontShape{" ^ (encodingToString enc) ^ 
+                   "}{" ^ family ^ "}{" ^ (createSeries wght wdth) ^ 
+                   "}{" ^ (shapeToString shp) ^ "}{" ^
+                  (fold_left
+                    (fun accum (rng, (fn, opts)) ->
+                       accum ^ " " ^ (rangeToString rng) ^ " " ^ 
+                       (genTexname fn enc opts) ^ " ")
+                    ""
+                    (optRanges rngs)
+                  ) ^ "}{ }\n" ^ accum)
+                )
+                wdthTable
+                accum
+             )
+            wghtTable 
+            accum
+        )
+        shpTable
+        "\n"
+      )
+      )::files
+    )
+    families
+    []
+
+
+(******************************************************************************)
+
+type map_special = 
+  | SlantFontSpecial of float 
+  | ExtendFontSpecial of float
+
+type std_psfont =
+  | TimesRomanPS
+  | TimesItalicPS
+  | TimesBoldPS
+  | TimesBoldItalicPS
+  | HelveticaPS
+  | HelveticaObliquePS
+  | HelveticaBoldPS
+  | HelveticaBoldObliquePS
+  | CourierPS
+  | CourierObliquePS
+  | CourierBoldPS
+  | CourierBoldObliquePS
+  | SymbolPS
+
+type map_embed =
+  | PartialEmbed
+  | FullEmbed
+  | NoEmbed
+
+(* tfmname, psbasename, fontflags, specials, encoding file *)
+type map_entry = 
+  | MapFile of string * 
+               string option * 
+        (*       map_fontflags option * FIX *)
+               map_special list *
+               string option *
+               map_embed *
+               string 
+  | PSFile  of string *
+               std_psfont *
+       (*        map_fontflags option * FIX *)
+               map_special list *
+               string option
+                 
+
+(******************************************************************************)
+
+(* Generate a list of map files by running otftotfm*)
+let genMapFile () : (string * string) list = 
+  Hashtbl.fold
+    (fun family shpTable files ->
+      ((family ^ ".map"), 
+       Hashtbl.fold
+        (fun shp wghtTable accum ->
+           Hashtbl.fold 
+             (fun wght wdthTable accum ->
+              Hashtbl.fold 
+                (fun wdth rngs accum ->
+                  (fold_left
+                    (fun accum (rng, (fn, opts)) ->
+                       let tname = genTexname fn (!encoding) opts in
+                       (match (!encodingFile) with 
+                         | Some(file) ->
+                           let mapline = 
+                             system "otftotfm" (("-e"::file::fn::opts)@[tname]) in
+                           accum ^ mapline
+                         | None -> error "should be impossible!")  
+                    )
+                    ""
+                    rngs
+                  ) ^ accum
+                )
+                wdthTable
+                accum
+             )
+             wghtTable 
+             accum
+        ) 
+        shpTable
+        "\n" 
+      )::files
+    )
+    families
+    []
+
+(******************************************************************************)
+
+(* Print the usage information for the program *)
+let usage () : 'a = 
+  print_string ("Usage: " ^ (!program_name) ^ "\n" ^
+                "          [--help]\n" ^ 
+                "          [--verbose]\n" ^ 
+                "          [--swash]\n" ^ 
+                "          [--ornaments]\n" ^ 
+                "          [--enc=ENCODING]\n" ^ 
+                "          [--encFile=FILE]\n" ^ 
+                "          files ...\n\n" ^ 
+                "Construct NFSS font descriptor files and PostScript map files\n" ^ 
+                "for the specified OpenType fonts.\n\n" ^ 
+                "    -h, --help        print this message\n" ^ 
+                "     --verbose        print more information about what is happening\n" ^ 
+                "     --swash          generate a swashy version (experimental)\n" ^ 
+                "     --ornaments      generate ornaments (experimental)\n" ^ 
+                "     --enc=ENCODING   set the encoding type (default T1) \n" ^ 
+                "     --encFile=FILE   set the encoding definition (default cork)\n\n" ^ 
+                "Version $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $\n" ^ 
+                "Report bugs to <washburn@acm.org>.\n")
+
+let rec parseArgs (args : string list) : string list =
+  (match args with
+   | []               -> []
+   | "--h"::t         -> (showUsage := true); parseArgs t
+   | "--verbose"::t   -> (verbose := true); parseArgs t
+   | "--help"::t      -> (showUsage := true); parseArgs t
+   | "--swash"::t     -> (swashVersion := true); parseArgs t
+   | "--ornaments"::t  -> (ornamentVersion := true); parseArgs t
+   | (h::t)            
+     when 
+     (string_match (regexp "--enc=\\(.*\\)") h 0) -> 
+      (encoding :=  parseEncoding (matched_group 1 h)); 
+      parseArgs t
+   | (h::t)            
+     when 
+     (string_match (regexp "--encfile=\\(.*\\)") h 0) -> 
+      (encodingFile := Some (matched_group 1 h)); 
+      parseArgs t
+   | h::t            -> h :: (parseArgs t))
+
+(******************************************************************************)
+
+(* Should convert to basename *)
+let _ = (program_name := basename (hd (command_line ())))
+
+let options = (tl (command_line ()))
+
+let _ = map (fun prog -> if not (prog_exists_path prog) then
+             error ("Could not find the program " ^ prog ^ " in your path!"))
+        ["otfinfo"; "otftotfm"]     
+
+(******************************************************************************)
+
+(* Do the work *)
+let filtered_args = (parseArgs options) in
+  let _ = (match (!encodingFile) with
+           | None -> (encodingFile := Some (encodingToFile (!encoding)))
+           | _    -> ()) in
+  if ((length filtered_args) > 0) && not (!showUsage) then
+   begin
+    ignore (map (build_table (!swashVersion) 
+                             (!ornamentVersion)) 
+                filtered_args);
+    ignore (map 
+        (fun (fn, contents) -> 
+           let _ = if (!verbose) then 
+              print_string ((!program_name) ^ ": creating " ^ fn ^ "\n")
+           in   
+             let channel = open_out fn in
+             let _ = output_string channel contents in
+               close_out channel)
+          (genFdFile (!encoding)));
+    ignore (map
+        (fun (fn, contents) -> 
+           let _ = if (!verbose) then 
+              print_string ((!program_name) ^ ": creating " ^ fn ^ "\n")
+           in
+             let channel = open_out fn in
+             let _ = output_string channel contents in
+               close_out channel)
+        (genMapFile ()))
+   end
+  else
+   usage ()
