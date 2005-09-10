@@ -3,7 +3,7 @@
 # vim:ft=ocaml 
 *)
 (* 
-adobe-font-tool $Id: otftofd 5 2005-09-10 21:04:45Z geoffw $
+adobe-font-tool $Id: otftofd 7 2005-09-10 21:25:47Z geoffw $
 Copyright Geoffrey Alan Washburn, 2005.
 
 You can redistribute and/or modify this software under the terms of
@@ -968,7 +968,7 @@ let usage () : 'a =
                 "     --ornaments      generate ornaments (experimental)\n" ^ 
                 "     --enc=ENCODING   set the encoding type (default T1) \n" ^ 
                 "     --encFile=FILE   set the encoding definition (default cork)\n\n" ^ 
-                "Version $Id: otftofd 5 2005-09-10 21:04:45Z geoffw $\n" ^ 
+                "Version $Id: otftofd 7 2005-09-10 21:25:47Z geoffw $\n" ^ 
                 "Report bugs to <washburn@acm.org>.\n")
 
 let rec parseArgs (args : string list) : string list =
@@ -1000,7 +1000,7 @@ let options = (tl (command_line ()))
 
 let _ = map (fun prog -> if not (prog_exists_path prog) then
              error ("Could not find the program " ^ prog ^ " in your path!"))
-        ["otfinfo"; "otftotfm"; "cfftot1"]     
+        ["otfinfo"; "otftotfm"]     
 
 (******************************************************************************)
 
