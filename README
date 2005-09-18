@@ -7,11 +7,11 @@ fonts. In particular, when considering Adobe Pro Optical fonts, there is
 almost a combinatorial nightmare when attempting to create these files
 by hand.
 
-This software is still alpha quality and mostly designed specifically
-for Adobe font conventions. It currently has experimental support
-for generating swashed versions of a font and fonts consisting of
-ornaments. There is some preliminary support for selecting encodings,
-but it is far from complete. The tool has been mostly tested withe the
+This software is still probably alpha quality and mostly designed
+specifically for Adobe font conventions. It currently has experimental
+support for generating swashed versions of a font and fonts consisting
+of ornaments. There is some preliminary support for selecting encodings,
+but it is far from complete. The tool has been mostly tested with the
 T1 Cork encoding. For more information about using the tool, invoke it
 with the --help option.
 
@@ -21,10 +21,12 @@ Kohler's excellent LCDF Typetools.
 ofttofd was originally called "adobe-font-tool", but at the suggestion
 of CTAN it was renamed to hopefully be more descriptive.
 
-otftofd is licensed under the FSF General Public License. Bug
-fixes, improvements, and suggestions are welcome. There is
-a public, read-only, Subversion repository for otftofd at
-https://svn.cis.upenn.edu/svnroot/otftofd/. 
+otftofd is licensed under the FSF General Public License. Do not hesitate
+to send me bug reports or fixes, other improvements, or suggestions.
+Contact via e-mail at washburn@acm.org.
+
+There is a public, read-only, Subversion repository for otftofd at
+https://svn.cis.upenn.edu/svnroot/otftofd/.
 
 Installation
 ------------

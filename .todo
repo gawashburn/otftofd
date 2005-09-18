@@ -1,9 +1,12 @@
 <todo version="0.1.19">
     <title>
-        otftofd to-do list $Id: .todo 4 2005-08-01 21:05:42Z geoffw $
+        otftofd to-do list $Id: .todo 8 2005-09-18 20:19:11Z geoffw $
     </title>
-    <note priority="veryhigh" time="1122923689">
+    <note priority="veryhigh" time="1122923689" done="1127074625">
         Add a README.
+        <comment>
+            Wrote an initial readme draft.
+        </comment>
     </note>
     <note priority="medium" time="1122923698">
         Add more validation.
