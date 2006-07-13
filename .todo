@@ -1,6 +1,6 @@
 <todo version="0.1.19">
     <title>
-        otftofd to-do list $Id: .todo 8 2005-09-18 20:19:11Z geoffw $
+        otftofd to-do list $Id: .todo 9 2006-07-13 19:24:14Z geoffw $
     </title>
     <note priority="veryhigh" time="1122923689" done="1127074625">
         Add a README.
@@ -31,6 +31,21 @@
     </note>
     <note priority="medium" time="1122930296">
         To go with the name better, make generating just the .fd the default behavior.
+    </note>
+    <note priority="medium" time="1152192120">
+        Add encoding file parser.
+    </note>
+    <note priority="medium" time="1152192140">
+        Add encoding file generation.
+    </note>
+    <note priority="medium" time="1152192190">
+        Add better support for LGR encoding.
+    </note>
+    <note priority="medium" time="1152192230">
+        Add support for OCaml based "scripts".
+    </note>
+    <note priority="medium" time="1152192257">
+        Add support for generating UTF8 input encoding for various symbols.
     </note>
     <note priority="low" time="1122923921">
         Design a language for manipulating the internal otftofd database?

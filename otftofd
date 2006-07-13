@@ -3,7 +3,7 @@
 # vim:ft=ocaml 
 *)
 (* 
-adobe-font-tool $Id: otftofd 7 2005-09-10 21:25:47Z geoffw $
+adobe-font-tool $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $
 Copyright Geoffrey Alan Washburn, 2005.
 
 You can redistribute and/or modify this software under the terms of
@@ -99,6 +99,8 @@ type encoding =
   | TS1  (* ??: ?? *) 
   | U    (* Unknown encoding: ?? *)
   | LY1  (* ??: texnansx *)
+  | LGR  (* Greek: ?? *)
+  | LGI  (* Greek: ?? *)
 
 (* NFSS Weights *)
 type weight = 
@@ -188,6 +190,8 @@ let encodingToString (enc : encoding) =
     | T5   -> "T5" 
     | TS1  -> "TS1" 
     | LY1  -> "LY1"
+    | LGR  -> "LGR"
+    | LGI  -> "LGI"
     | U    -> "U")
 
 let parseEncoding (enc : string) : encoding =
@@ -204,6 +208,8 @@ let parseEncoding (enc : string) : encoding =
    | "T5"  -> T5
    | "TS1" -> TS1
    | "LY1" -> LY1
+   | "LGR" -> LGR
+   | "LGI" -> LGI
    | "U"   -> U
    | _     -> error ("Unknown font encoding " ^ enc))
 
@@ -968,7 +974,7 @@ let usage () : 'a =
                 "     --ornaments      generate ornaments (experimental)\n" ^ 
                 "     --enc=ENCODING   set the encoding type (default T1) \n" ^ 
                 "     --encFile=FILE   set the encoding definition (default cork)\n\n" ^ 
-                "Version $Id: otftofd 7 2005-09-10 21:25:47Z geoffw $\n" ^ 
+                "Version $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $\n" ^ 
                 "Report bugs to <washburn@acm.org>.\n")
 
 let rec parseArgs (args : string list) : string list =
