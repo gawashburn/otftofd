@@ -381,6 +381,9 @@ let showUsage : bool ref = ref false
 (* Generate a version of the fonts with swashes *)
 let swashVersion : bool ref = ref false 
 
+(* Generate a version of the fonts with old-style figures *)
+let osfVersion : bool ref = ref false 
+
 (* Generate a version of the fonts with just ornaments *)
 let ornamentVersion : bool ref = ref false 
 
@@ -787,32 +790,39 @@ let build_table_inner (fn : string)
                      opts
      end                
 
+let add_swash_opt features opts =
+  if ((checkFeature Fswsh features) && (checkFeature Fcswh features)) then
+    "-fswsh"::"-fcswh"::opts
+  else
+    opts
+
+let add_osf_opt features opts =
+  if ((checkFeature Fswsh features) && (checkFeature Fcswh features)) then
+    "-fonum"::opts
+  else 
+    opts
+
 (* Fill in the appropriate entries in the family table for the given filename *)
-let build_table (swash : bool) (orn : bool) (fn : string) = 
+let build_table (osf : bool) (swash : bool) (orn : bool) (fn : string) = 
   let (family, wghtopt, wdthopt, shpopt, dsnopt) = parseFileName fn in
   let features = parseOTFFeatures fn in
     begin 
       (* For each shape we have ... *)
       fold_left 
        (fun _ (shp, opts) ->
-         if swash then
-           if ((checkFeature Fswsh features) && (checkFeature Fcswh features)) then
-             let opts = "-fswsh"::"-fcswh"::opts in
-               build_table_inner fn family wghtopt wdthopt dsnopt shp features opts
-            else
-             (* No swashes, so don't do anything *)
-             ()
-         else if orn then
-           if (checkFeature Fornm features) then
-             let opts = "-fornm"::opts in
-               build_table_inner fn family wghtopt wdthopt dsnopt shp features opts
-            else
-             (* No ornaments, so don't do anything *)
-             ()
-         else 
-           build_table_inner fn family wghtopt wdthopt dsnopt shp features opts)
-       () 
-       (decideShapes shpopt features)
+         let opts = if osf then add_osf_opt features opts else opts in
+         let opts = if swash then add_swash_opt features opts else opts in
+           if orn then
+             if (checkFeature Fornm features) then
+               let opts = "-fornm"::opts in
+                 build_table_inner fn family wghtopt wdthopt dsnopt shp features opts
+              else
+               (* No ornaments, so don't do anything *)
+               ()
+           else 
+             build_table_inner fn family wghtopt wdthopt dsnopt shp features opts)
+         () 
+         (decideShapes shpopt features)
     end    
 
 (* Generate the "Texname" for a given font from the filename and options *)
@@ -971,6 +981,7 @@ let usage () : 'a =
                 "    -h, --help        print this message\n" ^ 
                 "     --verbose        print more information about what is happening\n" ^ 
                 "     --swash          generate a swashy version (experimental)\n" ^ 
+                "     --osf            generate with old-style figures\n" ^ 
                 "     --ornaments      generate ornaments (experimental)\n" ^ 
                 "     --enc=ENCODING   set the encoding type (default T1) \n" ^ 
                 "     --encFile=FILE   set the encoding definition (default cork)\n\n" ^ 
@@ -984,7 +995,8 @@ let rec parseArgs (args : string list) : string list =
    | "--verbose"::t   -> (verbose := true); parseArgs t
    | "--help"::t      -> (showUsage := true); parseArgs t
    | "--swash"::t     -> (swashVersion := true); parseArgs t
-   | "--ornaments"::t  -> (ornamentVersion := true); parseArgs t
+   | "--osf"::t       -> (osfVersion := true); parseArgs t
+   | "--ornaments"::t -> (ornamentVersion := true); parseArgs t
    | (h::t)            
      when 
      (string_match (regexp "--enc=\\(.*\\)") h 0) -> 
@@ -1017,7 +1029,8 @@ let filtered_args = (parseArgs options) in
            | _    -> ()) in
   if ((length filtered_args) > 0) && not (!showUsage) then
    begin
-    ignore (map (build_table (!swashVersion) 
+    ignore (map (build_table (!osfVersion)
+                             (!swashVersion) 
                              (!ornamentVersion)) 
                 filtered_args);
     ignore (map 
