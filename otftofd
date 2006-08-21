@@ -797,7 +797,7 @@ let add_swash_opt features opts =
     opts
 
 let add_osf_opt features opts =
-  if ((checkFeature Fswsh features) && (checkFeature Fcswh features)) then
+  if ((checkFeature Fonum) then
     "-fonum"::opts
   else 
     opts
