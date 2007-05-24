@@ -797,9 +797,9 @@ let add_swash_opt features opts =
     opts
 
 let add_osf_opt features opts =
-  if ((checkFeature Fonum) then
+  if checkFeature Fonum features then
     "-fonum"::opts
-  else 
+   else 
     opts
 
 (* Fill in the appropriate entries in the family table for the given filename *)
