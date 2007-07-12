@@ -1,4 +1,4 @@
-#!/usr/bin/env cash
+#!/usr/bin/env ocaml
 (*
 # vim:ft=ocaml 
 *)
@@ -21,9 +21,47 @@ Software Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
 *)
 
 #load "str.cma";;
-open Cash;;
+#load "unix.cma";;
+open Unix;;
 open Str;;
 open List;;
+
+(******************************************************************************)
+
+(* Define these in case we need to change them later/dynamically *)
+
+let dirsep = "/"
+let pathsep = ":"
+
+(******************************************************************************)
+
+(* Cash compatibility functions *)
+
+let exists_file str = 
+    try 
+      let _ = stat str in true
+    with
+      Unix_error _ -> false
+
+let is_file_directory_fn str = 
+    try 
+      match (stat str).st_kind with
+          | S_DIR -> true
+          | _ -> false
+    with
+      Unix_error _ -> false
+
+let is_file_executable_fn str = 
+    try 
+      let _ = access str [X_OK] in true
+    with
+      Unix_error _ -> false
+
+let exec_path_list () =
+      Str.split (regexp pathsep) (Sys.getenv "PATH")
+
+let command_line () = 
+      Array.to_list Sys.argv
 
 (******************************************************************************)
 
@@ -48,19 +86,15 @@ let warning (msg : string) : unit =
 
 (******************************************************************************)
 
-(* Define these in case we need to change them later/dynamically *)
-
-let dirsep = "/"
-let pathsep = ":"
-
-(******************************************************************************)
-
 (* Check whether a programs exists in a given directory *)
 let prog_exists_dir (prog : string) (dir : string) =
-  if (is_file_directory_fn dir) then
-    is_file_executable_fn (dir ^ dirsep ^ prog)
+  if (exists_file dir) then 
+    if (is_file_directory_fn dir) then
+      is_file_executable_fn (dir ^ dirsep ^ prog)
+    else
+      (error ("Tried to check the existence of program " ^ prog ^ " in non-directory " ^ dir))
   else
-    (error ("Tried to check the existence of program " ^ prog ^ " in non-directory " ^ dir))
+    false
 
 (* basename *)
 let basename (fn : string) =
@@ -72,13 +106,26 @@ let basename (fn : string) =
      | h::t   -> last t) in
    last (parts)  
   
-(* Check whether a program exists in the users path *)
-let prog_exists_path (prog : string) : bool = 
- exists (prog_exists_dir prog) (exec_path_list ())
+(* Read all lines from an input stream *)
+let read_all (chan : in_channel) : string = 
+     let rec read_all_tail chan accum = 
+              try 
+                let line = input_line chan in
+                 read_all_tail chan (accum ^ line ^ "\n")
+              with End_of_file -> accum
+          in 
+           read_all_tail chan ""
 
 (* Run a program and return the output as a string *)
 let system (prog : string) (args : string list) : string = 
-  run_with_string (fun _ -> exec_path prog args)
+     let chan = Unix.open_process_in (prog ^ " " ^ (String.concat " " args)) in
+     let text = read_all chan in
+     let _ = Unix.close_process_in chan in text
+
+
+(* Check whether a program exists in the users path *)
+let prog_exists_path (prog : string) : bool = 
+ exists (prog_exists_dir prog) (exec_path_list ())
 
 (******************************************************************************)
 
@@ -230,6 +277,8 @@ let encodingToFile (enc : encoding) =
     | T2   -> (encwarn (); "-")
     | T5   -> (encwarn (); "-")
     | TS1  -> (encwarn (); "-")
+    | LGI  -> (encwarn (); "-")
+    | LGR  -> (encwarn (); "-")
     | LY1  -> "texnansx"
     | U    -> (encwarn (); "-"))
 
@@ -374,6 +423,9 @@ let createSeries (wght : weight) (wdth : width) =
 
 let encoding : encoding ref = ref T1 
 let encodingFile : (string option) ref = ref None 
+
+(* Suffix for generating differently named families for different parameters *)
+let fsuffix : string ref = ref ""
 
 (* Should we show the usage information instead of doing anything? *) 
 let showUsage : bool ref = ref false 
@@ -679,14 +731,14 @@ let allocate_entry (fam : string)
        at this point *)
       let tbl = Hashtbl.create 10 in
         (Hashtbl.add wghtTable wght tbl; tbl) in
-   let rngList = 
-    (* Check to see if there is already a list of ranges *)
-    try 
-      Hashtbl.replace wdthTable wdth ((rng,(fn, opts))::(Hashtbl.find wdthTable wdth))
-    (* If not, create it *)  
-    with Not_found ->  
-      Hashtbl.add wdthTable wdth [(rng, (fn, opts))] in
-    ()  
+    begin   
+      (* Check to see if there is already a list of ranges *)
+      try 
+        Hashtbl.replace wdthTable wdth ((rng,(fn, opts))::(Hashtbl.find wdthTable wdth))
+      (* If not, create it *)  
+      with Not_found ->  
+        Hashtbl.add wdthTable wdth [(rng, (fn, opts))] 
+    end 
 
 (***************************************************************************)
 
@@ -778,7 +830,8 @@ let build_table_inner (fn : string)
   (* Always add default ligatures, kerning, and terminal forms if they are available *)
   let opts = if (checkFeature Fliga features) then "-fliga"::opts else opts in
   let opts = if (checkFeature Fkern features) then "-fkern"::opts else opts in
-  let opts = if (checkFeature Ffina features) then "-ffina"::"--boundary-char= "::opts else opts in
+  (* FIX??? Doesn't work with the latest otftotfm? *)
+  (* let opts = if (checkFeature Ffina features) then "-ffina"::"--boundary-char= "::opts else opts in *)
     begin
       (* Allocate entries in the table *)
       allocate_entry family 
@@ -815,12 +868,12 @@ let build_table (osf : bool) (swash : bool) (orn : bool) (fn : string) =
            if orn then
              if (checkFeature Fornm features) then
                let opts = "-fornm"::opts in
-                 build_table_inner fn family wghtopt wdthopt dsnopt shp features opts
+                 build_table_inner fn (family ^ (!fsuffix)) wghtopt wdthopt dsnopt shp features opts
               else
                (* No ornaments, so don't do anything *)
                ()
            else 
-             build_table_inner fn family wghtopt wdthopt dsnopt shp features opts)
+             build_table_inner fn (family ^ (!fsuffix)) wghtopt wdthopt dsnopt shp features opts)
          () 
          (decideShapes shpopt features)
     end    
@@ -973,18 +1026,20 @@ let usage () : 'a =
                 "          [--verbose]\n" ^ 
                 "          [--swash]\n" ^ 
                 "          [--ornaments]\n" ^ 
+                "          [--fsuffix=STRING]\n" ^ 
                 "          [--enc=ENCODING]\n" ^ 
                 "          [--encFile=FILE]\n" ^ 
                 "          files ...\n\n" ^ 
                 "Construct NFSS font descriptor files and PostScript map files\n" ^ 
                 "for the specified OpenType fonts.\n\n" ^ 
-                "    -h, --help        print this message\n" ^ 
-                "     --verbose        print more information about what is happening\n" ^ 
-                "     --swash          generate a swashy version (experimental)\n" ^ 
-                "     --osf            generate with old-style figures\n" ^ 
-                "     --ornaments      generate ornaments (experimental)\n" ^ 
-                "     --enc=ENCODING   set the encoding type (default T1) \n" ^ 
-                "     --encFile=FILE   set the encoding definition (default cork)\n\n" ^ 
+                "    -h, --help         print this message\n" ^ 
+                "     --verbose         print more information about what is happening\n" ^ 
+                "     --swash           generate a swashy version (experimental)\n" ^ 
+                "     --osf             generate with old-style figures\n" ^ 
+                "     --ornaments       generate ornaments (experimental)\n" ^ 
+                "     --fsuffix=STRING  suffix for the generated font family (default none) \n" ^ 
+                "     --enc=ENCODING    set the encoding type (default T1) \n" ^ 
+                "     --encFile=FILE    set the encoding definition (default cork)\n\n" ^ 
                 "Version $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $\n" ^ 
                 "Report bugs to <washburn@acm.org>.\n")
 
@@ -1001,6 +1056,11 @@ let rec parseArgs (args : string list) : string list =
      when 
      (string_match (regexp "--enc=\\(.*\\)") h 0) -> 
       (encoding :=  parseEncoding (matched_group 1 h)); 
+      parseArgs t
+   | (h::t)            
+     when 
+     (string_match (regexp "--fsuffix=\\(.*\\)") h 0) -> 
+      (fsuffix := matched_group 1 h); 
       parseArgs t
    | (h::t)            
      when 
@@ -1023,11 +1083,13 @@ let _ = map (fun prog -> if not (prog_exists_path prog) then
 (******************************************************************************)
 
 (* Do the work *)
-let filtered_args = (parseArgs options) in
-  let _ = (match (!encodingFile) with
-           | None -> (encodingFile := Some (encodingToFile (!encoding)))
-           | _    -> ()) in
-  if ((length filtered_args) > 0) && not (!showUsage) then
+let filtered_args = parseArgs options 
+
+let _ = (match (!encodingFile) with
+             | None -> (encodingFile := Some (encodingToFile (!encoding)))
+             | _    -> ()) 
+
+let _ = if ((length filtered_args) > 0) && not (!showUsage) then
    begin
     ignore (map (build_table (!osfVersion)
                              (!swashVersion) 
