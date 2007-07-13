@@ -427,6 +427,9 @@ let encodingFile : (string option) ref = ref None
 (* Suffix for generating differently named families for different parameters *)
 let fsuffix : string ref = ref ""
 
+(* Scaling factor *)
+let scalefact : string ref = ref ""
+
 (* Should we show the usage information instead of doing anything? *) 
 let showUsage : bool ref = ref false 
 
@@ -914,7 +917,8 @@ let genFdFile (enc : encoding) : (string * string) list =
                    "}{" ^ (shapeToString shp) ^ "}{" ^
                   (fold_left
                     (fun accum (rng, (fn, opts)) ->
-                       accum ^ " " ^ (rangeToString rng) ^ " " ^ 
+                       accum ^ " " ^ (rangeToString rng) ^ " " ^
+                       (if not ((!scalefact) = "") then "[" ^ (!scalefact) ^ "] " else "") ^
                        (genTexname fn enc opts) ^ " ")
                     ""
                     (optRanges rngs)
@@ -1027,6 +1031,7 @@ let usage () : 'a =
                 "          [--swash]\n" ^ 
                 "          [--ornaments]\n" ^ 
                 "          [--fsuffix=STRING]\n" ^ 
+                "          [--scale=FLOAT]\n" ^ 
                 "          [--enc=ENCODING]\n" ^ 
                 "          [--encFile=FILE]\n" ^ 
                 "          files ...\n\n" ^ 
@@ -1038,6 +1043,7 @@ let usage () : 'a =
                 "     --osf             generate with old-style figures\n" ^ 
                 "     --ornaments       generate ornaments (experimental)\n" ^ 
                 "     --fsuffix=STRING  suffix for the generated font family (default none) \n" ^ 
+                "     --scale=FLOAT  scaling factor (default 1.0) \n" ^ 
                 "     --enc=ENCODING    set the encoding type (default T1) \n" ^ 
                 "     --encFile=FILE    set the encoding definition (default cork)\n\n" ^ 
                 "Version $Id: otftofd 9 2006-07-13 19:24:14Z geoffw $\n" ^ 
@@ -1061,6 +1067,11 @@ let rec parseArgs (args : string list) : string list =
      when 
      (string_match (regexp "--fsuffix=\\(.*\\)") h 0) -> 
       (fsuffix := matched_group 1 h); 
+      parseArgs t
+   | (h::t)            
+     when 
+     (string_match (regexp "--scale=\\(.*\\)") h 0) -> 
+      (scalefact := matched_group 1 h); 
       parseArgs t
    | (h::t)            
      when 
