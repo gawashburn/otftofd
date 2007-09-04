@@ -1075,7 +1075,7 @@ let rec parseArgs (args : string list) : string list =
       parseArgs t
    | (h::t)            
      when 
-     (string_match (regexp "--encfile=\\(.*\\)") h 0) -> 
+     (string_match (regexp "--encFile=\\(.*\\)") h 0) -> 
       (encodingFile := Some (matched_group 1 h)); 
       parseArgs t
    | h::t            -> h :: (parseArgs t))
